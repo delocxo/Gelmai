@@ -2,7 +2,8 @@
 {
     String, Number, Identifier,
 
-    True, False, New, Return,
+    True, False, New, Return, Is, If, Else,
+    While, Break, Continue,
 
     Add, Sub, Mul, Div, Mod,
     IsEqual, NotEqual, Less, Greater,

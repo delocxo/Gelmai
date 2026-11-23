@@ -1,5 +1,5 @@
 using System.Linq.Expressions;
-record Symbol(string Name, Type Type, bool IsValueType)
+public record Symbol(string Name, Type Type, bool IsValueType)
 {
     public static readonly IntSymbol Int = new();
     public static readonly FloatSymbol Float = new();
@@ -9,6 +9,7 @@ record Symbol(string Name, Type Type, bool IsValueType)
     public static readonly ObjectSymbol Object = new();
     public static readonly AnyFunctionSymbol AnyFunction = new();
     public static readonly Symbol Empty = new("empty", typeof(byte), false);
+    public static readonly AnyArraySymbol AnyArraySymbol = new();
 
     public static readonly Dictionary<string, Symbol> Symbols = new()
     {
@@ -20,7 +21,9 @@ record Symbol(string Name, Type Type, bool IsValueType)
         { "object", Object }
     };
 
-    public bool IsNonStorage => SymbolCheck(Void) || this is AnyFunctionSymbol;
+    public bool IsNonStorage => SymbolCheck(Void) || this is AnyFunctionSymbol || this is AnyArraySymbol;
+    public bool IsArray => this is ArraySymbol || this is AnyArraySymbol;
+    public bool IsFunction => this is FunctionSymbol || this is AnyFunctionSymbol;
 
     public bool SymbolCheck(Symbol other)
     {
@@ -34,8 +37,10 @@ record Symbol(string Name, Type Type, bool IsValueType)
                     .All(x => x.First.SymbolCheck(x.Second)) &&
                 fsl.ReturnSymbol.SymbolCheck(fsr.ReturnSymbol);
 
-        if ((this is FunctionSymbol && other is AnyFunctionSymbol) ||
-            (this is AnyFunctionSymbol && other is FunctionSymbol))
+        if (CrossCheck<FunctionSymbol, AnyFunctionSymbol>(other))
+            return true;
+
+        if (CrossCheck<ArraySymbol, AnyArraySymbol>(other))
             return true;
 
         return this == other;
@@ -47,8 +52,21 @@ record Symbol(string Name, Type Type, bool IsValueType)
             throw new Error($"'{this}' cannot be used as a storage type", position);
     }
 
+    public bool CrossCheck<T1, T2>(Symbol other)
+        where T1 : Symbol where T2 : Symbol
+    {
+        return (this is T1 && other is T2) ||
+            (this is T2 && other is T1);
+    }
+
     public void ThrowIfCantBeAssignedBy(Symbol other, IPosition position)
     {
+        if (this is AnyArraySymbol && other.IsArray)
+            return;
+
+        if (this is AnyFunctionSymbol && other.IsFunction)
+            return;
+
         if (IsNonStorage)
             throw new Error($"Cannot convert '{other}' to '{this}'", position);
 
@@ -84,6 +102,9 @@ record Symbol(string Name, Type Type, bool IsValueType)
 
     public void ThrowIfCantCastFrom(Symbol other, IPosition position)
     {
+        if (SymbolCheck(Object) && other is AnyArraySymbol)
+            return;
+
         if (IsNonStorage || other.IsNonStorage)
             throw new Error($"Cannot convert '{this}' to '{other}'", position);
 
@@ -129,16 +150,17 @@ record Symbol(string Name, Type Type, bool IsValueType)
     }
 }
 
-record IntSymbol() : Symbol("int", typeof(long), true);
-record FloatSymbol() : Symbol("float", typeof(double), true);
-record StringSymbol() : Symbol("string", typeof(string), false);
-record BoolSymbol() : Symbol("bool", typeof(bool), true);
-record VoidSymbol() : Symbol("void", typeof(void), false);
-record ObjectSymbol() : Symbol("object", typeof(object), false);
-record ArraySymbol(Symbol Inner) : Symbol("array", Inner.Type.MakeArrayType(), false);
-record FunctionSymbol(Symbol ReturnSymbol, List<Symbol> ParameterSymbols, string Name = "function")
+public record IntSymbol() : Symbol("int", typeof(long), true);
+public record FloatSymbol() : Symbol("float", typeof(double), true);
+public record StringSymbol() : Symbol("string", typeof(string), false);
+public record BoolSymbol() : Symbol("bool", typeof(bool), true);
+public record VoidSymbol() : Symbol("void", typeof(void), false);
+public record ObjectSymbol() : Symbol("object", typeof(object), false);
+public record ArraySymbol(Symbol Inner) : Symbol("array", Inner.Type.MakeArrayType(), false);
+public record FunctionSymbol(Symbol ReturnSymbol, List<Symbol> ParameterSymbols, string Name = "function")
     : Symbol(Name, FunctionTypes.GetFunctionType(ReturnSymbol, ParameterSymbols), false)
 {
     public int ParameterCount => ParameterSymbols.Count;
 }
-record AnyFunctionSymbol() : Symbol("()", typeof(Delegate), false);
+public record AnyFunctionSymbol() : Symbol("()", typeof(Delegate), false);
+public record AnyArraySymbol() : Symbol("[]", typeof(Array), false);

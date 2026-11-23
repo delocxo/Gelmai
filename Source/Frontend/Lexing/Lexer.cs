@@ -13,7 +13,13 @@ class Lexer
         { "true", TokenType.True },
         { "false", TokenType.False },
         { "new", TokenType.New },
-        { "return", TokenType.Return }
+        { "return", TokenType.Return },
+        { "is", TokenType.Is },
+        { "if", TokenType.If },
+        { "else", TokenType.Else },
+        { "while", TokenType.While },
+        { "break", TokenType.Break },
+        { "continue", TokenType.Continue }
     };
 
     static Dictionary<string, TokenType> s_symbols = new Dictionary<string, TokenType>()

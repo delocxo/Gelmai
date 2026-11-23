@@ -7,6 +7,8 @@ partial class Semantics
     static Dictionary<string, FunctionStmt> functions = [];
     static Symbol currentReturnSymbol = Symbol.Int;
 
+    int loopDepth = 0;
+
     public List<Stmt> Check(List<Stmt> ast)
     {
         List<Stmt> stmts = [];
@@ -15,6 +17,8 @@ partial class Semantics
         {
             if (stmt is FunctionStmt functionStmt)
             {
+                ThrowIfNotFreeName(functionStmt.Name, functionStmt);
+
                 if (!functions.TryAdd(functionStmt.Name, functionStmt))
                     throw new Error($"Function '{functionStmt.Name}' is an already existing function", functionStmt.Position);
 
@@ -39,6 +43,7 @@ partial class Semantics
         {
             case VariableStmt variableStmt:
                 {
+                    ThrowIfNotFreeName(variableStmt.Name, variableStmt);
                     var symbol = ResolveSymbol(variableStmt.Symbol);
                     var resolved = CheckExpr(variableStmt.Expr);
                     Scopes.Declare(variableStmt.Name, symbol, resolved.Symbol, variableStmt);
@@ -47,8 +52,8 @@ partial class Semantics
 
             case BareStmt bareStmt:
                 {
-                    var resolved = CheckExpr(bareStmt.Expr).Expr;
-                    return new BareStmt(resolved, bareStmt.Position);
+                    var resolved = CheckExpr(bareStmt.Expr);
+                    return new BareStmt(resolved.Expr, bareStmt.Position, resolved.Symbol);
                 }
 
             case FunctionStmt functionStmt:
@@ -71,6 +76,79 @@ partial class Semantics
                         ExpSymbol = resolved.Symbol,
                     };
                 }
+
+            case IfStmt ifStmt:
+                {
+                    List<IfBranch> newBranches = [];
+
+                    ifStmt.IfBranches.ForEach(branch =>
+                    {
+                        var resolved = CheckExpr(branch.Expr);
+                        resolved.Symbol.ThrowIfNotSymbol(Symbol.Bool, ifStmt);
+
+                        List<Stmt> body = [];
+
+                        var newBranch = new IfBranch(resolved.Expr, body);
+                        newBranches.Add(newBranch);
+
+                        Scopes.BeginScope();
+
+                        body.AddRange(Check(branch.Stmts));
+
+                        Scopes.Save(newBranch);
+
+                        Scopes.EndScope();
+                    });
+
+                    List<Stmt>? elseBody = null;
+                    if (ifStmt.ElseBody != null)
+                    {
+                        Scopes.BeginScope();
+
+                        elseBody = Check(ifStmt.ElseBody);
+
+                        Scopes.Save(elseBody);
+
+                        Scopes.EndScope();
+                    }
+
+                    return new IfStmt(newBranches, elseBody, ifStmt.Position);
+                }
+
+            case WhileStmt whileStmt:
+                {
+                    var branch = whileStmt.Branch;
+
+                    var resolved = CheckExpr(branch.Expr);
+                    resolved.Symbol.ThrowIfNotSymbol(Symbol.Bool, whileStmt);
+
+                    List<Stmt> body = [];
+                    var newBranch = new IfBranch(resolved.Expr, body);
+
+                    Scopes.BeginScope();
+
+                    loopDepth++;
+
+                    body.AddRange(Check(branch.Stmts));
+
+                    loopDepth--;
+
+                    Scopes.Save(newBranch);
+
+                    Scopes.EndScope();
+
+                    return new WhileStmt(newBranch, whileStmt.Position);
+                }
+
+            case BreakStmt:
+                if (loopDepth < 1)
+                    throw new Error($"Break cannot be used outside a loop", stmt);
+                return stmt;
+
+            case ContinueStmt:
+                if (loopDepth < 1)
+                    throw new Error($"Continue cannot be used outside a loop", stmt);
+                return stmt;
         }
 
         throw new Error($"Invalid Statement: {stmt.GetType().Name}", stmt);
@@ -99,6 +177,9 @@ partial class Semantics
                         var boundFunction = BoundFunction(function, nameExpr.Position);
                         return (nameExpr, boundFunction.Symbol);
                     }
+
+                    if (Natives.Methods.TryGetValue(nameExpr.Name, out var native))
+                        return (nameExpr, native.Symbol);
 
                     return (
                         nameExpr,
@@ -263,6 +344,71 @@ partial class Semantics
 
                     return (newExpr, functionSymbol.ReturnSymbol);
                 }
+
+            case IsExpr isExpr:
+                {
+                    var resolved = CheckExpr(isExpr.Target);
+                    var symbol = ResolveSymbol(isExpr.Symbol);
+                    return (new BoundIsExpr(resolved, symbol), Symbol.Bool);
+                }
+
+            case IndexExpr indexExpr:
+                {
+                    var target = CheckExpr(indexExpr.Target);
+
+                    var index = CheckExpr(indexExpr.Index);
+                    index.Symbol.ThrowIfNotSymbol(Symbol.Int, indexExpr);
+
+                    if (target.Symbol is ArraySymbol arraySymbol)
+                    {
+                        return (
+                            new BoundIndexExpr(
+                                target.Expr,
+                                index.Expr,
+                                arraySymbol
+                            ), arraySymbol.Inner
+                        );
+                    }
+
+                    if (target.Symbol.SymbolCheck(Symbol.String))
+                    {
+                        return (
+                            new BoundIndexExpr(
+                                target.Expr,
+                                index.Expr,
+                                Symbol.String
+                            ),
+                            Symbol.String
+                        );
+                    }
+
+                    throw new Error($"Cannot index '{target.Symbol}'", indexExpr);
+                }
+
+            case IndexAssignExpr indexExpr:
+                {
+                    var target = CheckExpr(indexExpr.Target);
+
+                    var index = CheckExpr(indexExpr.Index);
+                    index.Symbol.ThrowIfNotSymbol(Symbol.Int, indexExpr);
+
+                    var resolved = CheckExpr(indexExpr.Expr);
+
+                    if (target.Symbol is not ArraySymbol arraySymbol)
+                        throw new Error($"Cannot index '{target.Symbol}'", indexExpr);
+
+                    arraySymbol.Inner.ThrowIfCantBeAssignedBy(resolved.Symbol, indexExpr);
+
+                    return (
+                        new BoundIndexAssignExpr(
+                            target.Expr,
+                            index.Expr,
+                            resolved,
+                            arraySymbol.Inner
+                        ),
+                        arraySymbol.Inner
+                    );
+                }
         }
 
         throw new Error($"Invalid Expression: {expr.GetType().Name}", expr);
@@ -300,8 +446,18 @@ partial class Semantics
 
             case AstAnyFunctionSymbol:
                 return Symbol.AnyFunction;
+
+            case AstAnyArraySymbol:
+                return Symbol.AnyArraySymbol;
         }
 
         throw new Error($"Invalid Symbol: {astSymbol.GetType().Name}", astSymbol);
+    }
+
+    void ThrowIfNotFreeName(string name, IPosition position)
+    {
+        if (functions.ContainsKey(name) ||
+            Natives.Methods.ContainsKey(name))
+            throw new Error($"'{name}' is an already existent function", position);
     }
 }

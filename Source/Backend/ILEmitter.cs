@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Reflection.Emit;
 using static System.Reflection.Emit.OpCodes;
 
@@ -7,6 +8,8 @@ class ILEmitter
     public Dictionary<Local, LocalBuilder> Locals { get; } = [];
     CodeGenerator codeGenerator { get; }
     ILGenerator il { get; }
+
+    Stack<(Label End, Label Start)> loopStack = [];
 
     public ILEmitter(ILGenerator iLGenerator, CodeGenerator codeGenerator)
     {
@@ -48,7 +51,8 @@ class ILEmitter
             case BareStmt bareStmt:
                 {
                     EmitExpr(bareStmt.Expr);
-                    il.Emit(Pop);
+                    if (!bareStmt.Symbol.SymbolCheck(Symbol.Void))
+                        il.Emit(Pop);
                     break;
                 }
 
@@ -65,6 +69,9 @@ class ILEmitter
 
             case FunctionStmt functionStmt:
                 {
+                    if (!Semantics.BoundFunctions.ContainsKey(functionStmt.Name))
+                        return;
+
                     var previous = Scopes.ScopesData;
 
                     Scopes.Restore(functionStmt);
@@ -90,6 +97,93 @@ class ILEmitter
 
                     Scopes.ScopesData = previous;
 
+                    break;
+                }
+
+            case IfStmt ifStmt:
+                {
+                    Label endLabel = il.DefineLabel();
+
+                    ifStmt.IfBranches.ForEach(branch =>
+                    {
+                        Label falseLabel = il.DefineLabel();
+
+                        EmitExpr(branch.Expr);
+
+                        il.Emit(Brfalse, falseLabel);
+
+                        var previous = Scopes.ScopesData;
+
+                        Scopes.Restore(branch);
+
+                        EmitStmts(branch.Stmts);
+
+                        il.Emit(Br, endLabel);
+
+                        Scopes.ScopesData = previous;
+
+                        il.MarkLabel(falseLabel);
+                    });
+
+                    if (ifStmt.ElseBody != null)
+                    {
+                        var previous = Scopes.ScopesData;
+
+                        Scopes.Restore(ifStmt.ElseBody);
+
+                        EmitStmts(ifStmt.ElseBody);
+
+                        Scopes.ScopesData = previous;
+                    }
+
+                    il.MarkLabel(endLabel);
+
+                    break;
+                }
+
+            case WhileStmt whileStmt:
+                {
+                    var branch = whileStmt.Branch;
+
+                    Label start = il.DefineLabel();
+                    Label end = il.DefineLabel();
+
+                    il.MarkLabel(start);
+
+                    EmitExpr(branch.Expr);
+
+                    il.Emit(Brfalse, end);
+
+                    var previous = Scopes.ScopesData;
+
+                    Scopes.Restore(branch);
+
+                    loopStack.Push((end, start));
+
+                    EmitStmts(branch.Stmts);
+
+                    loopStack.Pop();
+
+                    Scopes.ScopesData = previous;
+
+                    il.Emit(Br, start);
+
+                    il.MarkLabel(end);
+
+                    break;
+                }
+
+            case BreakStmt breakStmt:
+                {
+                    var endLabel = loopStack.Peek().End;
+                    il.Emit(Br, endLabel);
+                    break;
+                }
+
+            case ContinueStmt:
+                {
+                    var startLabel = loopStack.Peek().Start;
+                    il.Emit(Br, startLabel);
                     break;
                 }
         }
@@ -131,15 +225,13 @@ class ILEmitter
                     if (method.Key != null)
                     {
                         var tuple = method.Value;
+                        LoadFunction(tuple.Builder, tuple.Symbol.Type);
+                        break;
+                    }
 
-                        il.Emit(Ldnull);
-
-                        il.Emit(Ldftn, tuple.Builder);
-
-                        il.Emit(Newobj, tuple.Symbol.Type.GetConstructor(
-                            [typeof(object), typeof(IntPtr)]
-                        )!);
-
+                    if (Natives.Methods.TryGetValue(nameExpr.Name, out var native))
+                    {
+                        LoadFunction(native.Method, native.Symbol.Type);
                         break;
                     }
 
@@ -296,6 +388,83 @@ class ILEmitter
                     PositionTracking.EmitPosition(il, boundCallExpr);
 
                     il.Emit(Callvirt, boundCallExpr.Type.GetMethod("Invoke")!);
+
+                    break;
+                }
+
+            case BoundIsExpr boundIsExpr:
+                {
+                    var resolved = boundIsExpr.Resolved;
+
+                    EmitExpr(resolved);
+
+                    if (resolved.Symbol.IsValueType)
+                        il.Emit(Box, resolved.Symbol.Type);
+
+                    il.Emit(Isinst, boundIsExpr.Symbol.Type);
+                    il.Emit(Ldnull);
+                    il.Emit(Cgt_Un);
+
+                    break;
+                }
+
+            case BoundIndexExpr boundIndexExpr:
+                {
+                    if (boundIndexExpr.Symbol is ArraySymbol arraySymbol)
+                    {
+                        EmitExpr(boundIndexExpr.Target);
+
+                        EmitExpr(boundIndexExpr.Index);
+
+                        il.Emit(Conv_I);
+
+                        PositionTracking.EmitPosition(il, boundIndexExpr);
+
+                        il.Emit(Ldelem, arraySymbol.Inner.Type);
+
+                        break;
+                    }
+
+                    EmitExpr(boundIndexExpr.Target);
+
+                    EmitExpr(boundIndexExpr.Index);
+
+                    il.Emit(Conv_I4);
+
+                    il.Emit(Ldc_I4_1);
+
+                    PositionTracking.EmitPosition(il, boundIndexExpr);
+
+                    il.Emit(Callvirt, typeof(string).GetMethod(
+                        nameof(string.Substring),
+                        [typeof(int), typeof(int)]
+                    )!);
+
+                    break;
+                }
+
+            case BoundIndexAssignExpr boundIndexExpr:
+                {
+                    EmitExpr(boundIndexExpr.Target);
+
+                    EmitExpr(boundIndexExpr.Index);
+
+                    il.Emit(Conv_I);
+
+                    EmitExpr(boundIndexExpr.Expr);
+
+                    HandleImplicitConversion(boundIndexExpr.Inner, boundIndexExpr.Expr.Symbol);
+
+                    var local = il.DeclareLocal(boundIndexExpr.Inner.Type);
+                    il.Emit(Stloc, local);
+
+                    il.Emit(Ldloc, local);
+
+                    PositionTracking.EmitPosition(il, boundIndexExpr);
+
+                    il.Emit(Stelem, boundIndexExpr.Inner.Type);
+
+                    il.Emit(Ldloc, local);
 
                     break;
                 }
@@ -504,5 +673,23 @@ class ILEmitter
         {
             il.Emit(Box, right.Type);
         }
+    }
+
+    void LoadFunction(MethodBuilder methodBuilder, Type type)
+    {
+        il.Emit(Ldnull);
+        il.Emit(Ldftn, methodBuilder);
+        il.Emit(Newobj, type.GetConstructor(
+            [typeof(object), typeof(IntPtr)]
+        )!);
+    }
+
+    void LoadFunction(MethodInfo methodInfo, Type type)
+    {
+        il.Emit(Ldnull);
+        il.Emit(Ldftn, methodInfo);
+        il.Emit(Newobj, type.GetConstructor(
+            [typeof(object), typeof(IntPtr)]
+        )!);
     }
 }

@@ -30,7 +30,9 @@ class CodeGenerator
         {
             if (stmt is FunctionStmt functionStmt)
             {
-                var bound = Semantics.BoundFunctions[functionStmt.Name];
+                if (!Semantics.BoundFunctions.TryGetValue(functionStmt.Name, out var bound))
+                    continue;
+
                 var symbol = bound.Symbol;
 
                 var method = TypeBuilder.DefineMethod(

@@ -19,19 +19,31 @@ record ArrayExpr(AstSymbol Symbol, Expr? Size, List<Expr> Items, Position Positi
 record BoundArrayExpr(ArraySymbol Symbol, Expr? Size, List<Resolved> Items, Position Position) : Expr(Position);
 record CallExpr(Expr Target, List<Expr> Args) : Expr(Target.Position);
 record BoundCallExpr(Expr Target, List<(Resolved First, Symbol Second)> Args, Type Type) : Expr(Target.Position);
+record IsExpr(Expr Target, AstSymbol Symbol) : Expr(Target.Position);
+record BoundIsExpr(Resolved Resolved, Symbol Symbol) : Expr(Resolved.Expr.Position);
+record IndexExpr(Expr Target, Expr Index) : Expr(Target.Position);
+record BoundIndexExpr(Expr Target, Expr Index, Symbol Symbol) : Expr(Target.Position);
+record IndexAssignExpr(Expr Target, Expr Index, Expr Expr) : Expr(Target.Position);
+record BoundIndexAssignExpr(Expr Target, Expr Index, Resolved Expr, Symbol Inner) : Expr(Target.Position);
 
 abstract record AstSymbol(Position Position) : IPosition;
 record AstNameSymbol(string Name, Position Position) : AstSymbol(Position);
 record AstArraySymbol(AstSymbol InnerSymbol) : AstSymbol(InnerSymbol.Position);
 record AstFunctionSymbol(AstSymbol ReturnSymbol, List<AstSymbol> ParameterSymbols) : AstSymbol(ReturnSymbol.Position);
 record AstAnyFunctionSymbol(Position Position) : AstSymbol(Position);
+record AstAnyArraySymbol(Position Position) : AstSymbol(Position);
 
 abstract record Stmt(Position Position) : IPosition;
 record VariableStmt(string Name, AstSymbol Symbol, Expr Expr, Position Position) : Stmt(Position);
 record BoundVariableStmt(string Name, Symbol Symbol, Resolved Resolved, Position Position) : Stmt(Position);
-record BareStmt(Expr Expr, Position Position) : Stmt(Position);
+record BareStmt(Expr Expr, Position Position, Symbol Symbol) : Stmt(Position);
 record AstParameter(AstSymbol Symbol, string Name);
 record BoundParameter(Symbol Symbol, string Name);
 record FunctionStmt(AstSymbol ReturnSymbol, string Name, List<AstParameter> Parameters, List<Stmt> Body) : Stmt(ReturnSymbol.Position);
 record BoundFunctionStmt(Symbol ReturnSymbol, string Name, List<BoundParameter> Parameters, List<Stmt> Body, Position Position) : Stmt(Position);
 record ReturnStmt(Expr? Expr, Position Position, Symbol ReturnSymbol, Symbol ExpSymbol) : Stmt(Position);
+record IfBranch(Expr Expr, List<Stmt> Stmts);
+record IfStmt(List<IfBranch> IfBranches, List<Stmt>? ElseBody, Position Position) : Stmt(Position);
+record WhileStmt(IfBranch Branch, Position Position) : Stmt(Position);
+record BreakStmt(Position Position) : Stmt(Position);
+record ContinueStmt(Position Position) : Stmt(Position);

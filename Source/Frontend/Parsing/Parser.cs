@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipelines;
+using System.Runtime.ConstrainedExecution;
 
 class Parser
 {
@@ -32,6 +33,26 @@ class Parser
         if (Check(TokenType.Return))
             return ParseReturn();
 
+        if (Check(TokenType.If))
+            return ParseIf();
+
+        if (Check(TokenType.While))
+            return ParseWhile();
+
+        if (Check(TokenType.Break))
+        {
+            var pos = PosNext();
+            Expect(TokenType.Semicolon);
+            return new BreakStmt(pos);
+        }
+
+        if (Check(TokenType.Continue))
+        {
+            var pos = PosNext();
+            Expect(TokenType.Semicolon);
+            return new ContinueStmt(pos);
+        }
+
         return ParseBare();
     }
 
@@ -45,7 +66,7 @@ class Parser
     {
         Expr expr = ParseExpr();
         Expect(TokenType.Semicolon);
-        return new(expr, expr.Position);
+        return new(expr, expr.Position, Symbol.Empty);
     }
 
     Stmt ParseVar()
@@ -101,6 +122,49 @@ class Parser
         return new(expr, pos, Symbol.Empty, Symbol.Empty);
     }
 
+    IfStmt ParseIf()
+    {
+        var pos = PosNext();
+
+        List<IfBranch> branches = [ParseBranch()];
+
+        while (Check(TokenType.Else) && PeekNotAtEnd() && Peek().TokenType == TokenType.If)
+        {
+            Next();
+            Next();
+            branches.Add(ParseBranch());
+        }
+
+        List<Stmt>? elseBranch = null;
+
+        if (Match(TokenType.Else))
+            elseBranch = ParseBody();
+
+        return new(branches, elseBranch, pos);
+    }
+
+    WhileStmt ParseWhile()
+    {
+        var pos = PosNext();
+
+        var branch = ParseBranch();
+
+        return new(branch, pos);
+    }
+
+    IfBranch ParseBranch()
+    {
+        Expect(TokenType.LeftParen);
+
+        Expr condition = ParseExpr();
+
+        Expect(TokenType.RightParen);
+
+        var body = ParseBody();
+
+        return new(condition, body);
+    }
+
     bool IsKnownType(string? value = null)
     {
         if (value != null && Symbol.Symbols.ContainsKey(value))
@@ -109,8 +173,12 @@ class Parser
         if (Symbol.Symbols.ContainsKey(CurrentLexeme()))
             return true;
 
-        if (CurrentType() == TokenType.LeftParen &&
-            PeekNotAtEnd() && Peek().TokenType == TokenType.RightParen)
+        if (Check(TokenType.LeftBracket) && PeekNotAtEnd() &&
+            Peek().TokenType is TokenType.RightBracket)
+            return true;
+
+        if (Check(TokenType.LeftParen) && PeekNotAtEnd() &&
+            Peek().TokenType is TokenType.RightParen)
             return true;
 
         return false;
@@ -124,6 +192,12 @@ class Parser
         {
             Expect(TokenType.RightParen);
             return new AstAnyFunctionSymbol(pos);
+        }
+
+        if (Match(TokenType.LeftBracket))
+        {
+            Expect(TokenType.RightBracket);
+            return new AstAnyArraySymbol(pos);
         }
 
         string name = Expect(TokenType.Identifier);
@@ -361,7 +435,7 @@ class Parser
     {
         Expr left = ParsePrimary();
 
-        while (Check(TokenType.LeftParen, TokenType.LeftBracket, TokenType.Period))
+        while (Check(TokenType.LeftParen, TokenType.LeftBracket, TokenType.Period, TokenType.Is))
         {
             if (Check(TokenType.LeftParen))
             {
@@ -372,20 +446,29 @@ class Parser
                 continue;
             }
 
-            //     if (Check(TokenType.LeftBracket))
-            //     {
-            //         Position position = Current().Position;
+            if (Match(TokenType.Is))
+            {
+                var symbol = ParseSymbol();
 
-            //         Expect(TokenType.LeftBracket);
+                left = new IsExpr(left, symbol);
 
-            //         Expr index = ParseExpr();
+                continue;
+            }
 
-            //         Expect(TokenType.RightBracket);
+            if (Check(TokenType.LeftBracket))
+            {
+                Position position = Current().Position;
 
-            //         left = new IndexExpr(left, index, position);
+                Expect(TokenType.LeftBracket);
 
-            //         continue;
-            //     }
+                Expr index = ParseExpr();
+
+                Expect(TokenType.RightBracket);
+
+                left = new IndexExpr(left, index);
+
+                continue;
+            }
 
             //     if (Check(TokenType.Period))
             //     {
@@ -407,9 +490,15 @@ class Parser
 
     Expr ParseUnary()
     {
-        if (Check(TokenType.LeftParen) && PeekNotAtEnd() && IsKnownType(Peek().Lexeme))
+        if (Check(TokenType.LeftParen))
         {
             var pos = PosNext();
+
+            if (!IsKnownType())
+            {
+                _i--;
+                goto RegularUnary;
+            }
 
             var symbol = ParseSymbol();
 
@@ -420,6 +509,7 @@ class Parser
             return new CastExpr(symbol, target, pos);
         }
 
+    RegularUnary:
         if (Check(TokenType.Sub, TokenType.Bang, TokenType.BitwiseNot /* TokenType.At */))
         {
             Token op = Current();
@@ -623,6 +713,13 @@ class Parser
 
             if (left is NameExpr nameExpr)
                 return new AssignExpr(nameExpr.Name, expr, left.Position, Symbol.Empty);
+
+            if (left is IndexExpr indexExpr)
+                return new IndexAssignExpr(
+                    indexExpr.Target,
+                    indexExpr.Index,
+                    expr
+                );
 
             throw new Error("Invalid assign target", left);
         }

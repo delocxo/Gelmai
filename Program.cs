@@ -15,14 +15,9 @@ try
 {
     var lexer = new Lexer(
 """
-int Div(int a, int b)
-{
-    return a / b;
-}
 
-int result = Div(100, 0);
-
-return result; 
+int[] values = new int[5] { };
+values[0] = 100;
 
 """, "main.gel");
     var tokens = lexer.Lex();
@@ -38,8 +33,6 @@ return result;
 
     var @delegate = codegen.GetDelegate();
     long exitCode = @delegate();
-
-    Console.WriteLine(exitCode);
 
     return (int)exitCode;
 }
