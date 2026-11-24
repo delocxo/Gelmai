@@ -12,8 +12,9 @@ public static class DllLoader
 
         path = Path.GetFullPath(path);
 
-        if (!Path.Exists(path))
-            throw new Error($"Dll path: '{path}' does not exist", position);
+        if (!Path.Exists(path + ".dll"))
+            if (!Path.Exists(path))
+                throw new Error($"Dll path: '{path}' does not exist", position);
 
         if (!LoadedDlls.Add(path))
             throw new Error($"Dll path: '{path}' has already been loaded", position);
@@ -24,6 +25,15 @@ public static class DllLoader
 
             foreach (var type in assembly.GetExportedTypes())
             {
+                if (type.IsClass &&
+                    !type.ContainsGenericParameters &&
+                    !(type.IsAbstract && type.IsSealed) &&
+                    Symbol.TypeToSymbol(type) is ClassSymbol classSymbol)
+                {
+                    if (!Symbol.Symbols.TryAdd(classSymbol.Name, classSymbol))
+                        throw new Error($"Dll type '{classSymbol.Name}' is a duplicate", position);
+                }
+
                 foreach (var method in type.GetMethods(
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
                 {

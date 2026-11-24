@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Reflection.Emit;
 public record Symbol(string Name, Type Type)
 {
     public static readonly IntSymbol Int = new();
@@ -28,6 +29,8 @@ public record Symbol(string Name, Type Type)
     public bool IsArray => this is ArraySymbol || this is AnyArraySymbol;
     public bool IsFunction => this is FunctionSymbol || this is AnyFunctionSymbol;
     public readonly bool IsValueType = Type.IsValueType;
+
+    static readonly Dictionary<Type, ClassSymbol> classSymbolsByType = [];
 
     public bool SymbolCheck(Symbol other)
     {
@@ -223,6 +226,34 @@ public record Symbol(string Name, Type Type)
             return new FunctionSymbol(returnSymbol, parameters, functionName is not null ? functionName : "function");
         }
 
+        if (type.IsClass)
+        {
+            if (classSymbolsByType.TryGetValue(type, out var cached))
+                return cached;
+
+            string name = type.Name;
+
+            var fields = type.GetFields(
+                BindingFlags.Instance | BindingFlags.Public
+            );
+
+            var constructor = type.GetConstructor([]);
+
+            var classSymbol = new ClassSymbol(name, [], type, constructor);
+
+            classSymbolsByType.Add(type, classSymbol);
+
+            foreach (var field in fields)
+            {
+                var symbol = TypeToSymbol(field.FieldType);
+                bool isConst = field.IsInitOnly || field.IsLiteral;
+                var classField = new ClassField(symbol, isConst, field);
+                classSymbol.Fields.Add(field.Name, classField);
+            }
+
+            return classSymbol;
+        }
+
         throw new InvalidOperationException(functionName is not null
             ? $"Function: {functionName}"
             : ""
@@ -256,3 +287,5 @@ public record NullSymbol(Symbol Inner) : Symbol(
             : Inner.Type
         );
 public record NullLiteralSymbol() : Symbol("null", typeof(object));
+public record ClassField(Symbol Symbol, bool IsConst, FieldInfo FieldInfo);
+public record ClassSymbol(string Name, Dictionary<string, ClassField> Fields, Type Type, ConstructorInfo? Constructor) : Symbol(Name, Type);

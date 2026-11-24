@@ -22,7 +22,10 @@ class Lexer
         { "continue", TokenType.Continue },
         { "null", TokenType.Null },
         { "for", TokenType.For },
-        { "use", TokenType.Use }
+        { "use", TokenType.Use },
+        { "class", TokenType.Class },
+        { "try", TokenType.Try },
+        { "catch", TokenType.Catch }
     };
 
     static Dictionary<string, TokenType> s_symbols = new Dictionary<string, TokenType>()

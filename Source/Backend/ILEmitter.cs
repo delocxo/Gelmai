@@ -409,7 +409,14 @@ class ILEmitter
                     if (source.SymbolCheck(Symbol.Object) ||
                         source.SymbolCheck(new NullSymbol(Symbol.Object)))
                     {
+                        var castOp = il.DeclareLocal(source.Type);
+
+                        il.Emit(Stloc, castOp);
+
                         EmitPosition(boundCastExpr);
+
+                        il.Emit(Ldloc, castOp);
+
                         if (target.IsValueType)
                             il.Emit(Unbox_Any, target.Type);
                         else
@@ -580,6 +587,33 @@ class ILEmitter
             case NullExpr nullExpr:
                 {
                     il.Emit(Ldnull);
+                    break;
+                }
+
+            case BoundConstructorExpr constructorExpr:
+                {
+                    il.Emit(Newobj, constructorExpr.Target.Constructor!);
+
+                    constructorExpr.BraceInitializations.ForEach(x =>
+                    {
+                        il.Emit(Dup);
+                        EmitBoundMemberAssignExpr(x, false);
+                        il.Emit(Pop);
+                    });
+
+                    break;
+                }
+
+            case BoundMemberExpr boundMemberExpr:
+                {
+                    EmitExpr(boundMemberExpr.Target);
+                    il.Emit(Ldfld, boundMemberExpr.Field.FieldInfo);
+                    break;
+                }
+
+            case BoundMemberAssignExpr memberExpr:
+                {
+                    EmitBoundMemberAssignExpr(memberExpr);
                     break;
                 }
         }
@@ -837,12 +871,42 @@ class ILEmitter
     {
         var pos = position.Position;
 
+        if (!codeGenerator.Documents.TryGetValue(pos.Source, out var document))
+        {
+            document = codeGenerator.ModuleBuilder
+            .DefineDocument(
+                "main.gel",
+                Guid.Empty
+            );
+
+            codeGenerator.Documents[pos.Source] = document;
+        }
+
         il.MarkSequencePoint(
-            codeGenerator.Document,
+            document,
             pos.Line,
             pos.Column,
             pos.Line,
             pos.Column + 1
         );
+    }
+
+    void EmitBoundMemberAssignExpr(BoundMemberAssignExpr memberExpr, bool emitTarget = true)
+    {
+        if (emitTarget)
+            EmitExpr(memberExpr.Target);
+
+        EmitExpr(memberExpr.Resolved.Expr);
+
+        HandleImplicitConversion(memberExpr.Field.Symbol, memberExpr.Resolved.Symbol);
+
+        var local = il.DeclareLocal(memberExpr.Field.Symbol.Type);
+        il.Emit(Stloc, local);
+
+        il.Emit(Ldloc, local);
+
+        il.Emit(Stfld, memberExpr.Field.FieldInfo);
+
+        il.Emit(Ldloc, local);
     }
 }

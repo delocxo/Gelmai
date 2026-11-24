@@ -1,5 +1,8 @@
 global using Resolved = (Expr Expr, Symbol Symbol);
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.Intrinsics.Arm;
+using System.Security.Cryptography.X509Certificates;
 
 partial class Semantics
 {
@@ -184,6 +187,11 @@ partial class Semantics
                         forStmt.Position
                     );
                 }
+
+            case ClassStmt classStmt:
+                if (!Scopes.AtGlobalLevel)
+                    throw new Error($"Cannot declare class '{classStmt.Name}' at the local level", classStmt);
+                return classStmt;
         }
 
         throw new Error($"Invalid Statement: {stmt.GetType().Name}", stmt);
@@ -447,6 +455,70 @@ partial class Semantics
 
             case NullExpr nullExpr:
                 return (nullExpr, Symbol.Null);
+
+            case ConstructorExpr constructorExpr:
+                {
+                    var symbol = ResolveSymbol(constructorExpr.Target);
+
+                    if (symbol is not ClassSymbol classSymbol)
+                        throw new Error($"Cannot construct '{symbol}'", constructorExpr);
+
+                    if (classSymbol.Constructor is null)
+                        throw new Error($"'{classSymbol.Name}' has no public parameterless constructor", constructorExpr);
+
+                    List<BoundMemberAssignExpr> braceInitializations = [];
+
+                    var bound = new BoundConstructorExpr(classSymbol, constructorExpr.Position, braceInitializations);
+
+                    braceInitializations.AddRange(constructorExpr.BraceInitializationValues
+                        .Select(x =>
+                        {
+                            var memberExpr = new MemberAssignExpr(
+                                constructorExpr with { BraceInitializationValues = [] },
+                                x.Name,
+                                x.Expr
+                            );
+
+                            var boundAssign = (BoundMemberAssignExpr)CheckExpr(memberExpr).Expr;
+
+                            return boundAssign;
+                        }));
+
+                    return (bound, classSymbol);
+                }
+
+            case MemberExpr memberExpr:
+                {
+                    var target = CheckExpr(memberExpr.Target);
+
+                    if (target.Symbol is not ClassSymbol classSymbol)
+                        throw new Error($"'{target.Symbol}' cannot be member accessed", memberExpr);
+
+                    if (!classSymbol.Fields.TryGetValue(memberExpr.MemberName, out var field))
+                        throw new Error($"Class '{classSymbol}' does not contain field '{memberExpr.MemberName}'", memberExpr);
+
+                    return (new BoundMemberExpr(target.Expr, field, memberExpr.Position), field.Symbol);
+                }
+
+            case MemberAssignExpr memberExpr:
+                {
+                    var target = CheckExpr(memberExpr.Target);
+
+                    if (target.Symbol is not ClassSymbol classSymbol)
+                        throw new Error($"'{target.Symbol}' cannot be member accessed", memberExpr);
+
+                    if (!classSymbol.Fields.TryGetValue(memberExpr.MemberName, out var field))
+                        throw new Error($"Class '{classSymbol}' does not contain field '{memberExpr.MemberName}'", memberExpr);
+
+                    if (!memberExpr.BraceInitialization && (field.IsConst || field.FieldInfo.IsInitOnly))
+                        throw new Error($"Field '{memberExpr.MemberName}' from '{classSymbol.Name}' cannot be modified", memberExpr);
+
+                    var value = CheckExpr(memberExpr.Expr);
+
+                    field.Symbol.ThrowIfCantBeAssignedBy(value.Symbol, memberExpr);
+
+                    return (new BoundMemberAssignExpr(target.Expr, field, value), field.Symbol);
+                }
         }
 
         throw new Error($"Invalid Expression: {expr.GetType().Name}", expr);
@@ -500,5 +572,66 @@ partial class Semantics
         if (functions.ContainsKey(name) ||
             Natives.Methods.ContainsKey(name))
             throw new Error($"'{name}' is an already existent function", position);
+    }
+
+    public void RegisterUserTypes(List<Stmt> ast, ModuleBuilder moduleBuilder)
+    {
+        // First Pass
+        ast.ForEach(stmt =>
+        {
+            if (stmt is ClassStmt classStmt)
+            {
+                if (Symbol.Symbols.ContainsKey(classStmt.Name))
+                    throw new Error($"Class '{classStmt.Name}' is an already existent type", classStmt);
+
+                var type = moduleBuilder.DefineType(classStmt.Name, TypeAttributes.Public | TypeAttributes.Class);
+
+                var construtor = type.DefineConstructor(
+                    MethodAttributes.Public,
+                    CallingConventions.Standard,
+                    []
+                );
+
+                var ctorIl = construtor.GetILGenerator();
+                ctorIl.Emit(OpCodes.Ldarg_0);
+                ctorIl.Emit(OpCodes.Call, typeof(object).GetConstructor([])!);
+                ctorIl.Emit(OpCodes.Ret);
+
+                var classSymbol = new ClassSymbol(classStmt.Name, [], type, construtor);
+
+                Symbol.Symbols.Add(classStmt.Name, classSymbol);
+            }
+        });
+
+        // Second Pass
+        ast.ForEach(stmt =>
+        {
+            if (stmt is ClassStmt classStmt)
+            {
+                var classSymbol = (ClassSymbol)Symbol.Symbols[classStmt.Name];
+                var typeBuilder = (TypeBuilder)classSymbol.Type;
+
+                HashSet<string> existingFields = [];
+
+                classStmt.Fields.ForEach(field =>
+                {
+                    if (!existingFields.Add(field.Name))
+                        throw new Error($"Field '{field.Name}' is a duplicate from class '{classSymbol.Name}'", field.Symbol);
+
+                    var symbol = ResolveSymbol(field.Symbol);
+
+                    // Why not resuse my existing const check?
+                    bool isConst = new Local(field.Name, symbol) { IsTopLevel = false }.IsConst;
+
+                    var fieldBuilder = typeBuilder.DefineField(
+                        field.Name,
+                        symbol.Type,
+                        FieldAttributes.Public
+                    );
+
+                    classSymbol.Fields[field.Name] = new(symbol, isConst, fieldBuilder);
+                });
+            }
+        });
     }
 }

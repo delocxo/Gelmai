@@ -7,6 +7,7 @@ class Parser
 {
     List<Token> _tokens;
     int _i = 0;
+    HashSet<string> knownUserTypes = [];
 
     public Parser(List<Token> tokens)
     {
@@ -65,6 +66,9 @@ class Parser
 
         if (Check(TokenType.For))
             return ParseFor();
+
+        if (Check(TokenType.Class))
+            return ParseClass();
 
         return ParseBare();
     }
@@ -186,6 +190,41 @@ class Parser
         return new(name, symbol, iterable, body, pos);
     }
 
+    ClassStmt ParseClass()
+    {
+        var pos = PosNext();
+
+        string name = Expect(TokenType.Identifier);
+
+        if (Match(TokenType.Semicolon))
+            return new(name, [], pos);
+
+        Expect(TokenType.LeftBrace);
+
+        if (Match(TokenType.RightBrace))
+            return new(name, [], pos);
+
+        List<AstParameter> fields = [ParseParameter()];
+
+        Expect(TokenType.Semicolon);
+
+        while (true)
+        {
+            if (IsKnownType())
+            {
+                fields.Add(ParseParameter());
+                Expect(TokenType.Semicolon);
+                continue;
+            }
+
+            break;
+        }
+
+        Expect(TokenType.RightBrace);
+
+        return new(name, fields, pos);
+    }
+
     IfBranch ParseBranch()
     {
         Expect(TokenType.LeftParen);
@@ -207,6 +246,10 @@ class Parser
         if (Symbol.Symbols.ContainsKey(CurrentLexeme()))
             return true;
 
+        if (knownUserTypes.Contains(CurrentLexeme()) ||
+            (value != null && knownUserTypes.Contains(value)))
+            return true;
+
         if (Check(TokenType.LeftBracket) && PeekNotAtEnd() &&
             Peek().TokenType is TokenType.RightBracket)
             return true;
@@ -218,7 +261,7 @@ class Parser
         return false;
     }
 
-    AstSymbol ParseSymbol()
+    AstSymbol ParseSymbol(bool allowFunctions = true)
     {
         var pos = CurrentPos();
 
@@ -238,7 +281,7 @@ class Parser
 
         AstSymbol symbol = new AstNameSymbol(name, pos);
 
-        if (Match(TokenType.LeftParen))
+        if (allowFunctions && Match(TokenType.LeftParen))
         {
             if (Match(TokenType.RightParen))
                 symbol = new AstFunctionSymbol(symbol, []);
@@ -447,6 +490,32 @@ class Parser
         else if (Match(TokenType.New))
         {
             var symbol = ParseSymbol();
+
+            if (Match(TokenType.LeftBrace))
+            {
+                List<(string Name, Expr Expr)> initializations = [];
+
+                if (Check(TokenType.Identifier))
+                {
+                    string name = TokNext().Lexeme;
+                    Expect(TokenType.Equal);
+                    Expr expr = ParseExpr();
+                    initializations.Add((name, expr));
+                }
+
+                while (Match(TokenType.Comma))
+                {
+                    string name = TokNext().Lexeme;
+                    Expect(TokenType.Equal);
+                    Expr expr = ParseExpr();
+                    initializations.Add((name, expr));
+                }
+
+                Expect(TokenType.RightBrace);
+
+                return new ConstructorExpr(symbol, token.Position, initializations);
+            }
+
             Expr? size = null;
 
             if (Check(TokenType.LeftBracket))
@@ -499,8 +568,6 @@ class Parser
 
             if (Check(TokenType.LeftBracket))
             {
-                Position position = Current().Position;
-
                 Expect(TokenType.LeftBracket);
 
                 Expr index = ParseExpr();
@@ -512,18 +579,16 @@ class Parser
                 continue;
             }
 
-            //     if (Check(TokenType.Period))
-            //     {
-            //         Position position = Current().Position;
+            if (Check(TokenType.Period))
+            {
+                Next();
 
-            //         Next();
+                string name = ParseName();
 
-            //         string name = ParseName();
+                left = new MemberExpr(left, name);
 
-            //         left = new MemberExpr(left, name, position);
-
-            //         continue;
-            //     }
+                continue;
+            }
 
             break;
         }
@@ -763,6 +828,13 @@ class Parser
                     expr
                 );
 
+            if (left is MemberExpr memberExpr)
+                return new MemberAssignExpr(
+                    memberExpr.Target,
+                    memberExpr.MemberName,
+                    expr
+                );
+
             throw new Error("Invalid assign target", left);
         }
 
@@ -770,4 +842,22 @@ class Parser
     }
 
     Expr ParseExpr() => ParseAssign();
+
+    public void ScanForKnownUserTypes()
+    {
+        _i = 0;
+
+        while (NotAtEnd())
+        {
+            if (Match(TokenType.Class))
+            {
+                string name = Expect(TokenType.Identifier);
+                knownUserTypes.Add(name);
+            }
+
+            Next();
+        }
+
+        _i = 0;
+    }
 }

@@ -11,7 +11,7 @@ class CodeGenerator
     public PersistedAssemblyBuilder Assembly { get; }
     public ModuleBuilder ModuleBuilder { get; }
     public TypeBuilder TypeBuilder { get; }
-    public ISymbolDocumentWriter Document { get; }
+    public Dictionary<string, ISymbolDocumentWriter> Documents { get; } = [];
     public Dictionary<Local, FieldBuilder> Globals { get; } = [];
     public Dictionary<FunctionStmt, (BoundFunctionStmt Bound, MethodBuilder Builder, FunctionSymbol Symbol)> Methods { get; } = [];
 
@@ -23,11 +23,6 @@ class CodeGenerator
         );
 
         ModuleBuilder = Assembly.DefineDynamicModule("Gelmai");
-
-        Document = ModuleBuilder.DefineDocument(
-            "main.gel",
-            Guid.Empty
-        );
 
         TypeBuilder = ModuleBuilder.DefineType(
             "GelmaiProgram",
@@ -90,6 +85,11 @@ class CodeGenerator
     public Func<long> GetDelegate()
     {
         TypeBuilder.CreateType();
+
+        foreach (var symbol in Symbol.Symbols)
+            if (symbol.Value is ClassSymbol classSymbol)
+                if (classSymbol.Type is TypeBuilder typeBuilder)
+                    typeBuilder.CreateType();
 
         var metadata = Assembly.GenerateMetadata(
             out BlobBuilder ilStream,

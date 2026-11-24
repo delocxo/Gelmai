@@ -11,4 +11,9 @@ public static class GelmaiString
     {
         return string.Format(format, values);
     }
+
+    public static int StrLength(string str)
+    {
+        return str.Length;
+    }
 }

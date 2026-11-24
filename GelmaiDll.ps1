@@ -8,7 +8,7 @@ param(
 )
 
 $sourceDirectory = Join-Path $PSScriptRoot 'Source\Dlls'
-$outputPath = Join-Path $PSScriptRoot 'Dlls'
+$outputPath = Join-Path $PSScriptRoot 'nlib'
 
 if ($PSCmdlet.ParameterSetName -eq 'All') {
     $sourcePaths = @(Get-ChildItem -LiteralPath $sourceDirectory -Filter '*.cs' -File |
@@ -17,7 +17,8 @@ if ($PSCmdlet.ParameterSetName -eq 'All') {
         Write-Error "No DLL source files found in $sourceDirectory"
         exit 1
     }
-} else {
+}
+else {
     if (-not $File.EndsWith('.cs', [StringComparison]::OrdinalIgnoreCase)) {
         $File += '.cs'
     }

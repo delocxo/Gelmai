@@ -26,6 +26,12 @@ record BoundIndexExpr(Expr Target, Expr Index, Symbol Symbol) : Expr(Target.Posi
 record IndexAssignExpr(Expr Target, Expr Index, Expr Expr) : Expr(Target.Position);
 record BoundIndexAssignExpr(Expr Target, Expr Index, Resolved Expr, Symbol Inner) : Expr(Target.Position);
 record NullExpr(Position Position) : Expr(Position);
+record ConstructorExpr(AstSymbol Target, Position Position, List<(string Name, Expr Expr)> BraceInitializationValues) : Expr(Position);
+record BoundConstructorExpr(ClassSymbol Target, Position Position, List<BoundMemberAssignExpr> BraceInitializations) : Expr(Position);
+record MemberExpr(Expr Target, string MemberName) : Expr(Target.Position);
+record BoundMemberExpr(Expr Target, ClassField Field, Position Position) : Expr(Position);
+record MemberAssignExpr(Expr Target, string MemberName, Expr Expr, bool BraceInitialization = false) : Expr(Target.Position);
+record BoundMemberAssignExpr(Expr Target, ClassField Field, Resolved Resolved) : Expr(Target.Position);
 
 abstract record AstSymbol(Position Position) : IPosition;
 record AstNameSymbol(string Name, Position Position) : AstSymbol(Position);
@@ -51,3 +57,4 @@ record BreakStmt(Position Position) : Stmt(Position);
 record ContinueStmt(Position Position) : Stmt(Position);
 record ForStmt(string Iterator, AstSymbol IteratorSymbol, Expr Iterable, List<Stmt> Body, Position Position) : Stmt(Position);
 record BoundForStmt(string Iterator, Symbol IteratorSymbol, Expr Iterable, Symbol IterableSymbol, List<Stmt> Body, Position Position) : Stmt(Position);
+record ClassStmt(string Name, List<AstParameter> Fields, Position Position) : Stmt(Position);

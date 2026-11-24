@@ -4,6 +4,7 @@
 
     True, False, New, Return, Is, If, Else,
     While, Break, Continue, Null, For, Use,
+    Class, Try, Catch,
 
     Add, Sub, Mul, Div, Mod,
     IsEqual, NotEqual, Less, Greater,
