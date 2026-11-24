@@ -17,8 +17,19 @@ try
 """
 
 use "Dlls/Stdio.dll";
+use "Dlls/String.dll";
+use "Dlls/Array.dll";
 
-PrintF("{0}", new object[] {"Hello, World!"});
+int[] Range(int start, int count, int step)
+{
+    int[] values = new int[count];
+    int i = 0;
+    while (i < count)
+    {
+        int value = start + 
+    }
+    return values;
+}
 
 """, "main.gel");
     var tokens = lexer.Lex();
