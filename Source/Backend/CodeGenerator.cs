@@ -1,22 +1,33 @@
+using System.Diagnostics.SymbolStore;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
+using System.Runtime.Loader;
 
 class CodeGenerator
 {
-    public AssemblyBuilder Assembly { get; }
+    public PersistedAssemblyBuilder Assembly { get; }
     public ModuleBuilder ModuleBuilder { get; }
     public TypeBuilder TypeBuilder { get; }
+    public ISymbolDocumentWriter Document { get; }
     public Dictionary<Local, FieldBuilder> Globals { get; } = [];
     public Dictionary<FunctionStmt, (BoundFunctionStmt Bound, MethodBuilder Builder, FunctionSymbol Symbol)> Methods { get; } = [];
 
     public CodeGenerator()
     {
-        Assembly = AssemblyBuilder.DefineDynamicAssembly(
-            new("Gelmai"),
-            AssemblyBuilderAccess.Run
+        Assembly = new PersistedAssemblyBuilder(
+            new("GelmaiGenerated"),
+            typeof(object).Assembly
         );
 
         ModuleBuilder = Assembly.DefineDynamicModule("Gelmai");
+
+        Document = ModuleBuilder.DefineDocument(
+            "main.gel",
+            Guid.Empty
+        );
 
         TypeBuilder = ModuleBuilder.DefineType(
             "GelmaiProgram",
@@ -78,9 +89,60 @@ class CodeGenerator
 
     public Func<long> GetDelegate()
     {
-        Type program = TypeBuilder.CreateType()!;
+        TypeBuilder.CreateType();
 
-        var entry = program
+        var metadata = Assembly.GenerateMetadata(
+            out BlobBuilder ilStream,
+            out BlobBuilder fieldData,
+            out MetadataBuilder pbMetadata
+        );
+
+        var pdbBlob = new BlobBuilder();
+
+        var pdbbBuilder = new PortablePdbBuilder(
+            pbMetadata,
+            metadata.GetRowCounts(),
+            default
+        );
+
+        var pdbId = pdbbBuilder.Serialize(pdbBlob);
+
+        var debugDirectory = new DebugDirectoryBuilder();
+
+        debugDirectory.AddCodeViewEntry(
+            "Gelmai.pdb",
+            pdbId,
+            pdbbBuilder.FormatVersion
+        );
+
+        var peBuilder = new ManagedPEBuilder(
+            header: PEHeaderBuilder.CreateLibraryHeader(),
+            metadataRootBuilder: new MetadataRootBuilder(metadata),
+            ilStream: ilStream,
+            mappedFieldData: fieldData,
+            debugDirectoryBuilder: debugDirectory
+        );
+
+        var peBlob = new BlobBuilder();
+
+        peBuilder.Serialize(peBlob);
+
+        using var asmStream = new MemoryStream();
+        using var pdbStream = new MemoryStream();
+
+        peBlob.WriteContentTo(asmStream);
+        pdbBlob.WriteContentTo(pdbStream);
+
+        asmStream.Position = 0;
+        pdbStream.Position = 0;
+
+        var assembly = AssemblyLoadContext.Default.LoadFromStream(
+            asmStream,
+            pdbStream
+        );
+
+        var entry = assembly
+            .GetType("GelmaiProgram")!
             .GetMethod("Main")!
             .CreateDelegate<Func<long>>();
 

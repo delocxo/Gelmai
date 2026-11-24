@@ -409,6 +409,9 @@ partial class Semantics
                         arraySymbol.Inner
                     );
                 }
+
+            case NullExpr nullExpr:
+                return (nullExpr, Symbol.Null);
         }
 
         throw new Error($"Invalid Expression: {expr.GetType().Name}", expr);
@@ -449,6 +452,9 @@ partial class Semantics
 
             case AstAnyArraySymbol:
                 return Symbol.AnyArraySymbol;
+
+            case AstNullSymbol astNullSymbol:
+                return new NullSymbol(ResolveSymbol(astNullSymbol.InnerSymbol));
         }
 
         throw new Error($"Invalid Symbol: {astSymbol.GetType().Name}", astSymbol);

@@ -1,5 +1,5 @@
 using System.Linq.Expressions;
-public record Symbol(string Name, Type Type, bool IsValueType)
+public record Symbol(string Name, Type Type)
 {
     public static readonly IntSymbol Int = new();
     public static readonly FloatSymbol Float = new();
@@ -8,8 +8,10 @@ public record Symbol(string Name, Type Type, bool IsValueType)
     public static readonly VoidSymbol Void = new();
     public static readonly ObjectSymbol Object = new();
     public static readonly AnyFunctionSymbol AnyFunction = new();
-    public static readonly Symbol Empty = new("empty", typeof(byte), false);
+    public static readonly Symbol Empty = new("empty", typeof(byte));
     public static readonly AnyArraySymbol AnyArraySymbol = new();
+    public static readonly NullLiteralSymbol Null = new();
+    public static readonly NullSymbol NullObject = new(Object);
 
     public static readonly Dictionary<string, Symbol> Symbols = new()
     {
@@ -24,6 +26,7 @@ public record Symbol(string Name, Type Type, bool IsValueType)
     public bool IsNonStorage => SymbolCheck(Void) || this is AnyFunctionSymbol || this is AnyArraySymbol;
     public bool IsArray => this is ArraySymbol || this is AnyArraySymbol;
     public bool IsFunction => this is FunctionSymbol || this is AnyFunctionSymbol;
+    public readonly bool IsValueType = Type.IsValueType;
 
     public bool SymbolCheck(Symbol other)
     {
@@ -42,6 +45,9 @@ public record Symbol(string Name, Type Type, bool IsValueType)
 
         if (CrossCheck<ArraySymbol, AnyArraySymbol>(other))
             return true;
+
+        if (this is NullSymbol nsl && other is NullSymbol nsr)
+            return nsl.Inner.SymbolCheck(nsr.Inner);
 
         return this == other;
     }
@@ -67,37 +73,40 @@ public record Symbol(string Name, Type Type, bool IsValueType)
         if (this is AnyFunctionSymbol && other.IsFunction)
             return;
 
-        if (IsNonStorage)
+        if (this is NullSymbol && other is NullLiteralSymbol)
+            return;
+
+        if (IsNonStorage || other is NullLiteralSymbol)
             throw new Error($"Cannot convert '{other}' to '{this}'", position);
 
         if (SymbolCheck(other))
             return;
 
-        if (SymbolCheck(Object))
+        if (SymbolCheck(Object) || this is NullSymbol nullSymbol1 &&
+            nullSymbol1.Inner.SymbolCheck(Object))
             return;
 
         if (SymbolCheck(Float) && other.SymbolCheck(Int))
+            return;
+
+        if (this is NullSymbol nullSymbol &&
+            nullSymbol.Inner.SymbolCheck(other))
             return;
 
         throw new Error($"Cannot implicitly convert '{other}' to '{this}'", position);
     }
 
-    public bool CanBeAssignedBy(Symbol other)
+    public bool CanBeAssignedBy(Symbol other, IPosition position)
     {
-        if (IsNonStorage || other.IsNonStorage)
+        try
+        {
+            ThrowIfCantBeAssignedBy(other, position);
+            return true;
+        }
+        catch (Error)
+        {
             return false;
-
-        if (SymbolCheck(other))
-            return true;
-
-        // Can accept any type
-        if (SymbolCheck(Object))
-            return true;
-
-        if (SymbolCheck(Float) && other.SymbolCheck(Int))
-            return true;
-
-        return false;
+        }
     }
 
     public void ThrowIfCantCastFrom(Symbol other, IPosition position)
@@ -116,6 +125,14 @@ public record Symbol(string Name, Type Type, bool IsValueType)
 
         if ((SymbolCheck(Int) && other.SymbolCheck(Float)) ||
             (SymbolCheck(Float) && other.SymbolCheck(Int)))
+            return;
+
+        if (this is NullSymbol nullSymbol1 && nullSymbol1.Inner.SymbolCheck(Object) ||
+            other is NullSymbol nullSymbol3 && nullSymbol3.Inner.SymbolCheck(Object))
+            return;
+
+        if ((this is NullSymbol nullSymbol && nullSymbol.Inner.SymbolCheck(other)) ||
+            (other is NullSymbol nullSymbol2 && nullSymbol2.Inner.SymbolCheck(this)))
             return;
 
         throw new Error($"Cannot explicitly convert '{this}' to '{other}'", position);
@@ -146,21 +163,31 @@ public record Symbol(string Name, Type Type, bool IsValueType)
         if (this is FunctionSymbol functionSymbol)
             return $"{functionSymbol.ReturnSymbol} {Name}({string.Join(", ", functionSymbol.ParameterSymbols)})";
 
+        if (this is NullSymbol nullSymbol)
+            return $"{nullSymbol.Inner}?";
+
         return Name;
     }
 }
 
-public record IntSymbol() : Symbol("int", typeof(long), true);
-public record FloatSymbol() : Symbol("float", typeof(double), true);
-public record StringSymbol() : Symbol("string", typeof(string), false);
-public record BoolSymbol() : Symbol("bool", typeof(bool), true);
-public record VoidSymbol() : Symbol("void", typeof(void), false);
-public record ObjectSymbol() : Symbol("object", typeof(object), false);
-public record ArraySymbol(Symbol Inner) : Symbol("array", Inner.Type.MakeArrayType(), false);
+public record IntSymbol() : Symbol("int", typeof(long));
+public record FloatSymbol() : Symbol("float", typeof(double));
+public record StringSymbol() : Symbol("string", typeof(string));
+public record BoolSymbol() : Symbol("bool", typeof(bool));
+public record VoidSymbol() : Symbol("void", typeof(void));
+public record ObjectSymbol() : Symbol("object", typeof(object));
+public record ArraySymbol(Symbol Inner) : Symbol("array", Inner.Type.MakeArrayType());
 public record FunctionSymbol(Symbol ReturnSymbol, List<Symbol> ParameterSymbols, string Name = "function")
-    : Symbol(Name, FunctionTypes.GetFunctionType(ReturnSymbol, ParameterSymbols), false)
+    : Symbol(Name, FunctionTypes.GetFunctionType(ReturnSymbol, ParameterSymbols))
 {
     public int ParameterCount => ParameterSymbols.Count;
 }
-public record AnyFunctionSymbol() : Symbol("()", typeof(Delegate), false);
-public record AnyArraySymbol() : Symbol("[]", typeof(Array), false);
+public record AnyFunctionSymbol() : Symbol("()", typeof(Delegate));
+public record AnyArraySymbol() : Symbol("[]", typeof(Array));
+public record NullSymbol(Symbol Inner) : Symbol(
+        "?",
+        Inner.IsValueType
+            ? typeof(Nullable<>).MakeGenericType(Inner.Type)
+            : Inner.Type
+        );
+public record NullLiteralSymbol() : Symbol("null", typeof(object));

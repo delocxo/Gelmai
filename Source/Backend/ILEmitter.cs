@@ -281,6 +281,31 @@ class ILEmitter
                     if (source.SymbolCheck(target))
                         break;
 
+                    if (source is NullSymbol nullSymbol1 &&
+                        nullSymbol1.Inner.SymbolCheck(target))
+                    {
+                        var local = il.DeclareLocal(source.Type);
+
+                        il.Emit(Stloc, local);
+
+                        EmitPosition(boundCastExpr);
+
+                        il.Emit(Ldloca, local);
+
+                        var value = source.Type.GetProperty("Value")!.GetMethod!;
+
+                        il.Emit(Call, value);
+
+                        break;
+                    }
+
+                    if (target is NullSymbol nullSymbol &&
+                        nullSymbol.Inner.SymbolCheck(source))
+                    {
+                        HandleImplicitConversion(target, source);
+                        break;
+                    }
+
                     if (source.SymbolCheck(Symbol.Int) &&
                         target.SymbolCheck(Symbol.Float))
                     {
@@ -295,7 +320,8 @@ class ILEmitter
                         break;
                     }
 
-                    if (target.SymbolCheck(Symbol.Object))
+                    if (target.SymbolCheck(Symbol.Object) ||
+                        target.SymbolCheck(new NullSymbol(Symbol.Object)))
                     {
                         if (source.IsValueType)
                         {
@@ -306,9 +332,10 @@ class ILEmitter
                         break;
                     }
 
-                    if (source.SymbolCheck(Symbol.Object))
+                    if (source.SymbolCheck(Symbol.Object) ||
+                        source.SymbolCheck(new NullSymbol(Symbol.Object)))
                     {
-                        PositionTracking.EmitPosition(il, boundCastExpr);
+                        EmitPosition(boundCastExpr);
                         if (target.IsValueType)
                             il.Emit(Unbox_Any, target.Type);
                         else
@@ -330,7 +357,7 @@ class ILEmitter
                     else
                         il.Emit(Ldc_I4, boundArrayExpr.Items.Count);
 
-                    PositionTracking.EmitPosition(il, boundArrayExpr);
+                    EmitPosition(boundArrayExpr);
                     il.Emit(Newarr, symbol.Inner.Type);
 
                     for (int i = 0; i < boundArrayExpr.Items.Count; i++)
@@ -345,7 +372,7 @@ class ILEmitter
 
                         HandleImplicitConversion(symbol.Inner, item.Symbol);
 
-                        PositionTracking.EmitPosition(il, item.Expr);
+                        EmitPosition(item.Expr);
                         il.Emit(Stelem, symbol.Inner.Type);
                     }
 
@@ -385,7 +412,7 @@ class ILEmitter
                         HandleImplicitConversion(param, resolvedArg.Symbol);
                     }
 
-                    PositionTracking.EmitPosition(il, boundCallExpr);
+                    EmitPosition(boundCallExpr);
 
                     il.Emit(Callvirt, boundCallExpr.Type.GetMethod("Invoke")!);
 
@@ -395,6 +422,13 @@ class ILEmitter
             case BoundIsExpr boundIsExpr:
                 {
                     var resolved = boundIsExpr.Resolved;
+
+                    if (resolved.Symbol is NullSymbol nullSymbol &&
+                        nullSymbol.Inner.SymbolCheck(boundIsExpr.Symbol))
+                    {
+                        il.Emit(Ldc_I4_0);
+                        break;
+                    }
 
                     EmitExpr(resolved);
 
@@ -418,7 +452,7 @@ class ILEmitter
 
                         il.Emit(Conv_I);
 
-                        PositionTracking.EmitPosition(il, boundIndexExpr);
+                        EmitPosition(boundIndexExpr);
 
                         il.Emit(Ldelem, arraySymbol.Inner.Type);
 
@@ -433,7 +467,7 @@ class ILEmitter
 
                     il.Emit(Ldc_I4_1);
 
-                    PositionTracking.EmitPosition(il, boundIndexExpr);
+                    EmitPosition(boundIndexExpr);
 
                     il.Emit(Callvirt, typeof(string).GetMethod(
                         nameof(string.Substring),
@@ -460,12 +494,18 @@ class ILEmitter
 
                     il.Emit(Ldloc, local);
 
-                    PositionTracking.EmitPosition(il, boundIndexExpr);
+                    EmitPosition(boundIndexExpr);
 
                     il.Emit(Stelem, boundIndexExpr.Inner.Type);
 
                     il.Emit(Ldloc, local);
 
+                    break;
+                }
+
+            case NullExpr nullExpr:
+                {
+                    il.Emit(Ldnull);
                     break;
                 }
         }
@@ -653,7 +693,7 @@ class ILEmitter
             };
 
             if (!isFloat && (op is TokenType.Div or TokenType.Mod))
-                PositionTracking.EmitPosition(il, boundBinaryExpr);
+                EmitPosition(boundBinaryExpr);
 
             il.Emit(opcode);
         }
@@ -661,6 +701,30 @@ class ILEmitter
 
     void HandleImplicitConversion(Symbol left, Symbol right)
     {
+        if (left is NullSymbol nullSymbol &&
+            nullSymbol.Inner.IsValueType &&
+            nullSymbol.Inner.SymbolCheck(right))
+        {
+            var constructor = nullSymbol.Type.GetConstructor([nullSymbol.Inner.Type])!;
+            il.Emit(Newobj, constructor);
+            return;
+        }
+
+        if (left is NullSymbol nullSymbol1 && right is NullLiteralSymbol)
+        {
+            il.Emit(Pop);
+
+            var local = il.DeclareLocal(nullSymbol1.Type);
+
+            il.Emit(Ldloca, local);
+
+            il.Emit(Initobj, nullSymbol1.Type);
+
+            il.Emit(Ldloc, local);
+
+            return;
+        }
+
         if (left.SymbolCheck(Symbol.Float) &&
             right.SymbolCheck(Symbol.Int))
         {
@@ -668,8 +732,10 @@ class ILEmitter
             return;
         }
 
-        if (left.SymbolCheck(Symbol.Object) &&
-            right.IsValueType)
+        if ((left.SymbolCheck(Symbol.Object) ||
+            left is NullSymbol nullSymbol2 &&
+            nullSymbol2.Inner.SymbolCheck(Symbol.Object)
+            ) && right.IsValueType)
         {
             il.Emit(Box, right.Type);
         }
@@ -691,5 +757,18 @@ class ILEmitter
         il.Emit(Newobj, type.GetConstructor(
             [typeof(object), typeof(IntPtr)]
         )!);
+    }
+
+    void EmitPosition(IPosition position)
+    {
+        var pos = position.Position;
+
+        il.MarkSequencePoint(
+            codeGenerator.Document,
+            pos.Line,
+            pos.Column,
+            pos.Line,
+            pos.Column + 1
+        );
     }
 }

@@ -25,6 +25,7 @@ record IndexExpr(Expr Target, Expr Index) : Expr(Target.Position);
 record BoundIndexExpr(Expr Target, Expr Index, Symbol Symbol) : Expr(Target.Position);
 record IndexAssignExpr(Expr Target, Expr Index, Expr Expr) : Expr(Target.Position);
 record BoundIndexAssignExpr(Expr Target, Expr Index, Resolved Expr, Symbol Inner) : Expr(Target.Position);
+record NullExpr(Position Position) : Expr(Position);
 
 abstract record AstSymbol(Position Position) : IPosition;
 record AstNameSymbol(string Name, Position Position) : AstSymbol(Position);
@@ -32,6 +33,7 @@ record AstArraySymbol(AstSymbol InnerSymbol) : AstSymbol(InnerSymbol.Position);
 record AstFunctionSymbol(AstSymbol ReturnSymbol, List<AstSymbol> ParameterSymbols) : AstSymbol(ReturnSymbol.Position);
 record AstAnyFunctionSymbol(Position Position) : AstSymbol(Position);
 record AstAnyArraySymbol(Position Position) : AstSymbol(Position);
+record AstNullSymbol(AstSymbol InnerSymbol) : AstSymbol(InnerSymbol.Position);
 
 abstract record Stmt(Position Position) : IPosition;
 record VariableStmt(string Name, AstSymbol Symbol, Expr Expr, Position Position) : Stmt(Position);

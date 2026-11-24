@@ -234,6 +234,9 @@ class Parser
             break;
         }
 
+        if (Match(TokenType.Hook))
+            symbol = new AstNullSymbol(symbol);
+
         return symbol;
     }
 
@@ -427,6 +430,8 @@ class Parser
 
             return new ArrayExpr(symbol, size, items, token.Position);
         }
+        else if (Match(TokenType.Null))
+            return new NullExpr(token.Position);
 
         throw ThrowUnexpected();
     }
@@ -504,7 +509,7 @@ class Parser
 
             Expect(TokenType.RightParen);
 
-            Expr target = ParseExpr();
+            Expr target = ParseUnary();
 
             return new CastExpr(symbol, target, pos);
         }

@@ -19,7 +19,8 @@ class Lexer
         { "else", TokenType.Else },
         { "while", TokenType.While },
         { "break", TokenType.Break },
-        { "continue", TokenType.Continue }
+        { "continue", TokenType.Continue },
+        { "null", TokenType.Null }
     };
 
     static Dictionary<string, TokenType> s_symbols = new Dictionary<string, TokenType>()
@@ -56,7 +57,8 @@ class Lexer
             // { "^", TokenType.BitwiseXor },
             // { "|", TokenType.BitwiseOr },
             { "=>", TokenType.Arrow },
-            { "@", TokenType.At }
+            { "@", TokenType.At },
+            { "?", TokenType.Hook }
         };
 
     public static string? GetKeywordFromType(TokenType type)

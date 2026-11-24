@@ -7,7 +7,7 @@ public static partial class Natives
         {
             "Print",
             (
-                new(Symbol.Void, [Symbol.Object], "Print"),
+                new(Symbol.Void, [Symbol.NullObject], "Print"),
                 typeof(Console).GetMethod(
                     nameof(Console.Write),
                     [typeof(object)]
@@ -17,7 +17,7 @@ public static partial class Natives
         {
             "PrintLine",
             (
-                new(Symbol.Void, [Symbol.Object], "PrintLine"),
+                new(Symbol.Void, [Symbol.NullObject], "PrintLine"),
                 typeof(Console).GetMethod(
                     nameof(Console.WriteLine),
                     [typeof(object)]
@@ -41,15 +41,22 @@ public static partial class Natives
         {
             "ReadLine",
             (
-                new(Symbol.String, []),
+                new(new NullSymbol(Symbol.String), []),
                 typeof(Natives).GetMethod(nameof(ReadLine))!
             )
         },
         {
             "ToString",
             (
-                new (Symbol.String, [Symbol.Object]),
+                new (Symbol.String, [Symbol.NullObject]),
                 typeof(Natives).GetMethod(nameof(ObjToString))!
+            )
+        },
+        {
+            "HasValue",
+            (
+                new(Symbol.Bool, [Symbol.NullObject]),
+                GetMethod(nameof(ObjHasValue))
             )
         }
     };
@@ -64,9 +71,9 @@ public static partial class Natives
         return array.Length;
     }
 
-    public static string ReadLine()
+    public static string? ReadLine()
     {
-        return Console.ReadLine() ?? "";
+        return Console.ReadLine();
     }
 
     public static string ObjToString(object? obj)
@@ -74,5 +81,15 @@ public static partial class Natives
         if (obj is null)
             return "";
         return obj.ToString() ?? "";
+    }
+
+    public static bool ObjHasValue(object? obj)
+    {
+        return obj != null;
+    }
+
+    public static MethodInfo GetMethod(string name)
+    {
+        return typeof(Natives).GetMethod(name)!;
     }
 }

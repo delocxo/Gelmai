@@ -16,9 +16,11 @@ try
     var lexer = new Lexer(
 """
 
-int[] values = new int[5] { };
-values[0] = 100;
+object? x = 100;
+PrintLine(HasValue(x));
 
+x = null;
+PrintLine(HasValue(x));
 """, "main.gel");
     var tokens = lexer.Lex();
 
@@ -40,18 +42,5 @@ catch (Error err)
 {
     err.Print();
     Console.Error.WriteLine(err.StackTrace);
-    return 1;
-}
-catch (Exception ex)
-{
-    var position = PositionTracking.Current.Value!;
-
-    if (PositionTracking.Debug)
-        Console.Error.WriteLine($"Error: {position}: {ex.Message}");
-    else
-        Console.Error.WriteLine($"Error: {ex.Message}");
-
-    Console.Error.WriteLine(ex.StackTrace);
-
     return 1;
 }
