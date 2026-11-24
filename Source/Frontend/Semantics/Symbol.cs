@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Reflection;
 public record Symbol(string Name, Type Type)
 {
     public static readonly IntSymbol Int = new();
@@ -9,7 +10,7 @@ public record Symbol(string Name, Type Type)
     public static readonly ObjectSymbol Object = new();
     public static readonly AnyFunctionSymbol AnyFunction = new();
     public static readonly Symbol Empty = new("empty", typeof(byte));
-    public static readonly AnyArraySymbol AnyArraySymbol = new();
+    public static readonly AnyArraySymbol AnyArray = new();
     public static readonly NullLiteralSymbol Null = new();
     public static readonly NullSymbol NullObject = new(Object);
 
@@ -167,6 +168,70 @@ public record Symbol(string Name, Type Type)
             return $"{nullSymbol.Inner}?";
 
         return Name;
+    }
+
+    public static Symbol TypeToSymbol(Type type, string? functionName = null)
+    {
+        var nullType = Nullable.GetUnderlyingType(type);
+        if (nullType is not null)
+            return new NullSymbol(TypeToSymbol(nullType));
+
+        if (!type.IsEnum && (Type.GetTypeCode(type) is
+            TypeCode.SByte or TypeCode.Byte or
+            TypeCode.Int16 or TypeCode.UInt16 or
+            TypeCode.Int32 or TypeCode.UInt32 or
+            TypeCode.Int64))
+            return Int;
+
+        if (type == typeof(float) || type == typeof(double))
+            return Float;
+
+        if (type.IsSZArray)
+        {
+            var elementType = type.GetElementType()!;
+            return new ArraySymbol(TypeToSymbol(elementType));
+        }
+
+        if (type == typeof(Array))
+            return AnyArray;
+
+        if (type == typeof(Delegate) || type == typeof(MulticastDelegate))
+            return AnyFunction;
+
+        if (type == typeof(void))
+            return Void;
+
+        if (type == typeof(bool))
+            return Bool;
+
+        if (type == typeof(string))
+            return String;
+
+        if (type == typeof(object))
+            return Object;
+
+        if (typeof(Delegate).IsAssignableFrom(type))
+        {
+            var invoke = type.GetMethod("Invoke")!;
+
+            var returnSymbol = TypeToSymbol(invoke.ReturnType);
+
+            List<Symbol> parameters = [];
+            foreach (var param in invoke.GetParameters())
+                parameters.Add(TypeToSymbol(param.ParameterType));
+
+            return new FunctionSymbol(returnSymbol, parameters, functionName is not null ? functionName : "function");
+        }
+
+        throw new InvalidOperationException(functionName is not null
+            ? $"Function: {functionName}"
+            : ""
+            + $"Failed to convert '{type}' to a valid Gelmai symbol");
+    }
+
+    public static string GetTypeName(Type type)
+    {
+        return TypeToSymbol(type).ToString();
     }
 }
 

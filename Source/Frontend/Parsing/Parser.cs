@@ -17,8 +17,18 @@ class Parser
     {
         List<Stmt> stmts = new List<Stmt>();
 
+        while (Check(TokenType.Use))
+        {
+            var pos = PosNext();
+            string path = Expect(TokenType.String);
+            Expect(TokenType.Semicolon);
+            DllLoader.LoadDll(path, pos);
+        }
+
         while (NotAtEnd())
         {
+            if (Check(TokenType.Use))
+                throw new Error("Use must precede all other statements", CurrentPos());
             stmts.Add(ParseStmt());
         }
 

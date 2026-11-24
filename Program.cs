@@ -16,24 +16,9 @@ try
     var lexer = new Lexer(
 """
 
-string[] StrToArray(string str)
-{
-    int length = StrLength(str);
-    string[] array = new string[length];
-    int i = 0;
-    while (i < length)
-    {
-        array[i] = str[i];
-        i = i + 1;
-    }
-    return array;
-}
+use "Dlls/Stdio.dll";
 
-string[] array = StrToArray("Hello, World!");
-
-for (string x : array) {
-    PrintLine(x);
-}
+PrintF("{0}", new object[] {"Hello, World!"});
 
 """, "main.gel");
     var tokens = lexer.Lex();

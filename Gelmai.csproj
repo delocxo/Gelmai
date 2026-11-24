@@ -13,4 +13,10 @@
     <PackageReference Include="LLVMSharp" Version="23.1.5" />
   </ItemGroup>
 
+  <ItemGroup>
+  <None Update="Dlls\**\*">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
+
 </Project>

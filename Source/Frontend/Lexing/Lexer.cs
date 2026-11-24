@@ -21,7 +21,8 @@ class Lexer
         { "break", TokenType.Break },
         { "continue", TokenType.Continue },
         { "null", TokenType.Null },
-        { "for", TokenType.For }
+        { "for", TokenType.For },
+        { "use", TokenType.Use }
     };
 
     static Dictionary<string, TokenType> s_symbols = new Dictionary<string, TokenType>()

@@ -3,7 +3,7 @@
     String, Number, Identifier,
 
     True, False, New, Return, Is, If, Else,
-    While, Break, Continue, Null, For,
+    While, Break, Continue, Null, For, Use,
 
     Add, Sub, Mul, Div, Mod,
     IsEqual, NotEqual, Less, Greater,

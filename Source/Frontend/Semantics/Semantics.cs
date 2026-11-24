@@ -486,7 +486,7 @@ partial class Semantics
                 return Symbol.AnyFunction;
 
             case AstAnyArraySymbol:
-                return Symbol.AnyArraySymbol;
+                return Symbol.AnyArray;
 
             case AstNullSymbol astNullSymbol:
                 return new NullSymbol(ResolveSymbol(astNullSymbol.InnerSymbol));
