@@ -149,6 +149,41 @@ partial class Semantics
                 if (loopDepth < 1)
                     throw new Error($"Continue cannot be used outside a loop", stmt);
                 return stmt;
+
+            case ForStmt forStmt:
+                {
+                    Scopes.BeginScope();
+
+                    var symbol = ResolveSymbol(forStmt.IteratorSymbol);
+
+                    var local = Scopes.Declare(forStmt.Iterator, symbol, null, forStmt);
+
+                    var resolved = CheckExpr(forStmt.Iterable);
+
+                    if (resolved.Symbol is not ArraySymbol arraySymbol)
+                        throw new Error($"Cannot use '{resolved.Symbol}' as an iterable", forStmt);
+
+                    Scopes.Assign(local.Name, arraySymbol.Inner, forStmt);
+
+                    loopDepth++;
+
+                    var body = Check(forStmt.Body);
+
+                    loopDepth--;
+
+                    Scopes.Save(body);
+
+                    Scopes.EndScope();
+
+                    return new BoundForStmt(
+                        forStmt.Iterator,
+                        symbol,
+                        resolved.Expr,
+                        resolved.Symbol,
+                        body,
+                        forStmt.Position
+                    );
+                }
         }
 
         throw new Error($"Invalid Statement: {stmt.GetType().Name}", stmt);

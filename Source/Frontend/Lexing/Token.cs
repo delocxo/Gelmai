@@ -3,7 +3,7 @@
     String, Number, Identifier,
 
     True, False, New, Return, Is, If, Else,
-    While, Break, Continue, Null,
+    While, Break, Continue, Null, For,
 
     Add, Sub, Mul, Div, Mod,
     IsEqual, NotEqual, Less, Greater,
@@ -13,7 +13,7 @@
 
     Equal, Semicolon, LeftBracket, RightBracket,
     LeftBrace, RightBrace, LeftParen, RightParen,
-    Comma, Period, Hash, Arrow, At, Hook,
+    Comma, Period, Hash, Arrow, At, Hook, Colon,
 
     Eof
 }

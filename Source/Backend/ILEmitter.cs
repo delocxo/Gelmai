@@ -173,6 +173,79 @@ class ILEmitter
                     break;
                 }
 
+            case BoundForStmt forStmt:
+                {
+                    var arraySymbol = (forStmt.IterableSymbol as ArraySymbol)!;
+
+                    Label start = il.DefineLabel();
+                    Label end = il.DefineLabel();
+
+                    // array
+                    var localArray = il.DeclareLocal(arraySymbol.Type);
+                    EmitExpr(forStmt.Iterable);
+                    il.Emit(Stloc, localArray);
+
+                    // length
+                    var localLen = il.DeclareLocal(typeof(int));
+                    il.Emit(Ldloc, localArray);
+                    il.Emit(Ldlen);
+                    il.Emit(Stloc, localLen);
+
+                    // index
+                    var localIndex = il.DeclareLocal(typeof(int));
+                    il.Emit(Ldc_I4_0);
+                    il.Emit(Stloc, localIndex);
+
+                    il.MarkLabel(start);
+
+                    // index >= length
+                    il.Emit(Ldloc, localIndex);
+                    il.Emit(Ldloc, localLen);
+                    il.Emit(Clt);
+                    il.Emit(Ldc_I4_0);
+                    il.Emit(Ceq);
+
+                    il.Emit(Brtrue, end);
+
+                    var previous = Scopes.ScopesData;
+
+                    Scopes.Restore(forStmt.Body);
+
+                    // iterator
+                    var iterator = Scopes.Resolve(forStmt.Iterator, forStmt);
+                    var iteratorLocal = il.DeclareLocal(arraySymbol.Inner.Type);
+                    Locals[iterator] = iteratorLocal;
+
+                    // array[index]
+                    il.Emit(Ldloc, localArray);
+                    il.Emit(Ldloc, localIndex);
+                    EmitPosition(forStmt);
+                    il.Emit(Ldelem, arraySymbol.Inner.Type);
+
+                    // interator = array[index]
+                    il.Emit(Stloc, iteratorLocal);
+
+                    // index++
+                    il.Emit(Ldloc, localIndex);
+                    il.Emit(Ldc_I4_1);
+                    il.Emit(Add);
+                    il.Emit(Stloc, localIndex);
+
+                    loopStack.Push((end, start));
+
+                    EmitStmts(forStmt.Body);
+
+                    loopStack.Pop();
+
+                    Scopes.ScopesData = previous;
+
+                    il.Emit(Br, start);
+
+                    il.MarkLabel(end);
+
+                    break;
+                }
+
             case BreakStmt breakStmt:
                 {
                     var endLabel = loopStack.Peek().End;
@@ -282,6 +355,7 @@ class ILEmitter
                         break;
 
                     if (source is NullSymbol nullSymbol1 &&
+                        nullSymbol1.Inner.IsValueType &&
                         nullSymbol1.Inner.SymbolCheck(target))
                     {
                         var local = il.DeclareLocal(source.Type);

@@ -53,6 +53,9 @@ class Parser
             return new ContinueStmt(pos);
         }
 
+        if (Check(TokenType.For))
+            return ParseFor();
+
         return ParseBare();
     }
 
@@ -150,6 +153,27 @@ class Parser
         var branch = ParseBranch();
 
         return new(branch, pos);
+    }
+
+    ForStmt ParseFor()
+    {
+        var pos = PosNext();
+
+        Expect(TokenType.LeftParen);
+
+        var symbol = ParseSymbol();
+
+        string name = ParseName();
+
+        Expect(TokenType.Colon);
+
+        var iterable = ParseExpr();
+
+        Expect(TokenType.RightParen);
+
+        var body = ParseBody();
+
+        return new(name, symbol, iterable, body, pos);
     }
 
     IfBranch ParseBranch()
@@ -426,7 +450,10 @@ class Parser
                 symbol = new AstArraySymbol(symbol);
             }
 
-            var items = ParseArgs(TokenType.LeftBrace, TokenType.RightBrace);
+            List<Expr> items = [];
+
+            if (Check(TokenType.LeftBrace))
+                items = ParseArgs(TokenType.LeftBrace, TokenType.RightBrace);
 
             return new ArrayExpr(symbol, size, items, token.Position);
         }

@@ -49,3 +49,5 @@ record IfStmt(List<IfBranch> IfBranches, List<Stmt>? ElseBody, Position Position
 record WhileStmt(IfBranch Branch, Position Position) : Stmt(Position);
 record BreakStmt(Position Position) : Stmt(Position);
 record ContinueStmt(Position Position) : Stmt(Position);
+record ForStmt(string Iterator, AstSymbol IteratorSymbol, Expr Iterable, List<Stmt> Body, Position Position) : Stmt(Position);
+record BoundForStmt(string Iterator, Symbol IteratorSymbol, Expr Iterable, Symbol IterableSymbol, List<Stmt> Body, Position Position) : Stmt(Position);

@@ -16,11 +16,25 @@ try
     var lexer = new Lexer(
 """
 
-object? x = 100;
-PrintLine(HasValue(x));
+string[] StrToArray(string str)
+{
+    int length = StrLength(str);
+    string[] array = new string[length];
+    int i = 0;
+    while (i < length)
+    {
+        array[i] = str[i];
+        i = i + 1;
+    }
+    return array;
+}
 
-x = null;
-PrintLine(HasValue(x));
+string[] array = StrToArray("Hello, World!");
+
+for (string x : array) {
+    PrintLine(x);
+}
+
 """, "main.gel");
     var tokens = lexer.Lex();
 
