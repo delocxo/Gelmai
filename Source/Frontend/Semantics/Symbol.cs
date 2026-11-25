@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
+
 public record Symbol(string Name, Type Type)
 {
     public static readonly IntSymbol Int = new();
@@ -262,7 +263,14 @@ public record Symbol(string Name, Type Type)
 
     public static string GetTypeName(Type type)
     {
-        return TypeToSymbol(type).ToString();
+        try
+        {
+            return TypeToSymbol(type).ToString();
+        }
+        catch
+        {
+            return type.Name;
+        }
     }
 }
 

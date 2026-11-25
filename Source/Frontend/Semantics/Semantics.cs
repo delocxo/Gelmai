@@ -192,6 +192,33 @@ partial class Semantics
                 if (!Scopes.AtGlobalLevel)
                     throw new Error($"Cannot declare class '{classStmt.Name}' at the local level", classStmt);
                 return classStmt;
+
+            case TryCatchStmt tryCatchStmt:
+                {
+                    List<Stmt> tryBody = [];
+
+                    Scopes.BeginScope();
+
+                    tryBody.AddRange(Check(tryCatchStmt.TryBody));
+
+                    Scopes.Save(tryBody);
+
+                    Scopes.EndScope();
+
+                    List<Stmt> catchBody = [];
+
+                    Scopes.BeginScope();
+
+                    Local local = Scopes.Declare(tryCatchStmt.CatchName, Symbol.Object, null, tryCatchStmt);
+
+                    catchBody.AddRange(Check(tryCatchStmt.CatchBody));
+
+                    Scopes.Save(catchBody);
+
+                    Scopes.EndScope();
+
+                    return new TryCatchStmt(tryBody, catchBody, tryCatchStmt.CatchName, tryCatchStmt.Position);
+                }
         }
 
         throw new Error($"Invalid Statement: {stmt.GetType().Name}", stmt);

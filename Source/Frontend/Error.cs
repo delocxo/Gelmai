@@ -21,7 +21,7 @@ class Error : Exception
 {
     Position? _position;
 
-    public Error(string message, Position position) : base(message)
+    public Error(string message, Position? position) : base(message)
     {
         _position = position;
     }

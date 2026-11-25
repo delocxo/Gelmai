@@ -259,6 +259,35 @@ class ILEmitter
                     il.Emit(Br, startLabel);
                     break;
                 }
+
+            case TryCatchStmt tryCatchStmt:
+                {
+                    il.BeginExceptionBlock();
+
+                    var previous = Scopes.ScopesData;
+
+                    Scopes.Restore(tryCatchStmt.TryBody);
+
+                    EmitStmts(tryCatchStmt.TryBody);
+
+                    il.BeginCatchBlock(typeof(Exception));
+
+                    Scopes.Restore(tryCatchStmt.CatchBody);
+
+                    LocalBuilder exLocal = il.DeclareLocal(typeof(Exception));
+                    Local local = Scopes.Resolve(tryCatchStmt.CatchName, tryCatchStmt);
+                    Locals[local] = exLocal;
+
+                    il.Emit(Stloc, exLocal);
+
+                    EmitStmts(tryCatchStmt.CatchBody);
+
+                    Scopes.ScopesData = previous;
+
+                    il.EndExceptionBlock();
+
+                    break;
+                }
         }
     }
 

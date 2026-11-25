@@ -13,43 +13,17 @@ using System.Linq.Expressions;
 
 try
 {
+    Natives.RegisterStaticMethods(typeof(Core), null);
+    Natives.RegisterSymbol(typeof(Exception));
+    Natives.RegisterSymbol(typeof(PanicException));
+
     var lexer = new Lexer(
 """
 
 use "nlib/Stdio.dll";
 
-class Profile
-{
-    string nickname;
-    int level;
-}
+PanicException
 
-class Player
-{
-    string name;
-    Profile profile;
-    bool active;
-}
-
-Player player = new Player {
-    name = "Mira",
-    profile = new Profile {
-        nickname = "Byte",
-        level = 7
-    },
-    active = true
-};
-
-PrintLine(player.name);
-PrintLine(player.profile.nickname);
-PrintLine(player.profile.level);
-PrintLine(player.active);
-
-player.profile.level = player.profile.level + 1;
-PrintLine(player.profile.level);
-
-Profile empty = new Profile {};
-PrintLine(empty.level);
 """, "main.gel");
     var tokens = lexer.Lex();
 

@@ -70,6 +70,9 @@ class Parser
         if (Check(TokenType.Class))
             return ParseClass();
 
+        if (Check(TokenType.Try))
+            return ParseTryCatch();
+
         return ParseBare();
     }
 
@@ -223,6 +226,25 @@ class Parser
         Expect(TokenType.RightBrace);
 
         return new(name, fields, pos);
+    }
+
+    TryCatchStmt ParseTryCatch()
+    {
+        var pos = PosNext();
+
+        var tryBody = ParseBody();
+
+        Expect(TokenType.Catch);
+
+        Expect(TokenType.LeftParen);
+
+        string catchName = Expect(TokenType.Identifier);
+
+        Expect(TokenType.RightParen);
+
+        var catchBody = ParseBody();
+
+        return new(tryBody, catchBody, catchName, pos);
     }
 
     IfBranch ParseBranch()

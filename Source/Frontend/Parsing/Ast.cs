@@ -58,3 +58,4 @@ record ContinueStmt(Position Position) : Stmt(Position);
 record ForStmt(string Iterator, AstSymbol IteratorSymbol, Expr Iterable, List<Stmt> Body, Position Position) : Stmt(Position);
 record BoundForStmt(string Iterator, Symbol IteratorSymbol, Expr Iterable, Symbol IterableSymbol, List<Stmt> Body, Position Position) : Stmt(Position);
 record ClassStmt(string Name, List<AstParameter> Fields, Position Position) : Stmt(Position);
+record TryCatchStmt(List<Stmt> TryBody, List<Stmt> CatchBody, string CatchName, Position Position) : Stmt(Position);
